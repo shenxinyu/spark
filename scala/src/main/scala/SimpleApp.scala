@@ -1,9 +1,28 @@
 /* SimpleApp.scala */
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql._
+import scala.collection.mutable.{Set, Map}
 import java.util._ 
-import scala.collection.mutable.Set
-import scala.collection.mutable.Map
+import java.sql.{DriverManager, Connection, Statement}
+
+class DBHelper {  
+    val url = "jdbc:mysql://192.168.1.10:3306/friend"
+    val name = "com.mysql.jdbc.Driver"
+    val user = "root"
+    val password = ""
+ 
+    var conn: Connection = null
+    var st: Statement = null
+  
+    Class.forName(this.name)
+    conn = DriverManager.getConnection(url, user, password)
+    st = conn.createStatement()
+  
+    def close() = {
+            this.conn.close()
+            this.st.close()
+    }
+}
 
 object SimpleApp {
     def main(args: Array[String]) {
@@ -12,12 +31,17 @@ object SimpleApp {
     val sqlContext = new SQLContext(sc)
     import sqlContext.implicits._
 
+    val tableName = "friend_bf"
+    val db = new DBHelper()
+    val ret = db.st.executeQuery("SELECT MAX(id) maxid FROM "+tableName)
+    ret.next()
+    val maxid = ret.getInt("maxid")
+    db.close()
+    println(maxid)
+
     val prop = new Properties();  
     prop.setProperty("user", "root");
-    val df = sqlContext.read.jdbc("jdbc:mysql://192.168.1.10:3306/friend", "friend", "id", 1, 20000000, conf.get("spark.cores.max").toInt, prop);
-    //val df = sqlContext.read.jdbc("jdbc:mysql://192.168.1.10:3306/friend", "friend", Array("id<80"), prop);
-    //df.registerTempTable("friend")
-    //val results = df.sqlContext.sql("SELECT uid, fid FROM friend")
+    val df = sqlContext.read.jdbc("jdbc:mysql://192.168.1.10:3306/friend", tableName, "id", 1, maxid, conf.getInt("spark.cores.max", 1), prop);
 
     //genarate 1-dim
     val dim1 = df.map(s => (s(1), s(2))).groupByKey().map(s => (s._1, s._2.toSet))
@@ -48,33 +72,12 @@ object SimpleApp {
             val dim3_size = c.size
             (uid, Map("a"->dim2_size, "b"->dim3_size))
     }
-    //dim2.cache()
     //dim2.take(10).foreach(println)
 
     val dim2_rank = dim2.map(s => (s._1, s._2("a")))
     dim2_rank.sortBy(_._2, false).take(10).foreach(println)
     val dim3_rank = dim2.map(s => (s._1, s._2("b")))
     dim3_rank.sortBy(_._2, false).take(10).foreach(println)
-
-/*
-    //generate 3-dim
-    val dim2_table = sc.broadcast(dim2.collectAsMap)
-    val dim3_rank = dim2.map{
-        case(uid, uList) =>
-            var a = Set[Any]();
-            uList.foreach{fid =>
-                 val b = dim1_table.value.get(fid).getOrElse(Set[Any]())
-                 a ++= b
-            }
-            a --= dim2_table.value.get(uid)
-            a --= dim1_table.value.get(uid)
-            a --= Set(uid)
-            (uid, a.size)
-    }
-    //dim3.take(10).foreach(println)
-    //val dim3_rank = dim3.map(s => (s._1, s._2.size))
-    dim3_rank.sortBy(_._2, false).take(10).foreach(println)
-*/
     }
 }
 
