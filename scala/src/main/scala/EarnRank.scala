@@ -3,7 +3,6 @@ package rank
 /* EarnRank.scala */
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql._
-import org.apache.spark.sql.types.{StructType,StructField,StringType,IntegerType}
 import scala.collection.mutable.{Set, Map}
 import java.util._ 
 import java.sql.{DriverManager, Connection, Statement}
@@ -93,7 +92,8 @@ object EarnRank {
 
     friend_earn.map(s => (s(0), (s(1), s(2).toString.toInt))).groupByKey().foreach(s => {
         val redis = RedisClient.pool.getResource
-        s._2.toSeq.sortBy(_._2, false).take(10).foreach(a => {
+        //s._2.toSeq.sortWith(_._2>_._2 ).take(10).foreach(a => {
+        s._2.foreach(a => {
             redis.zadd(s._1.toString, a._2, a._1.toString)
         })
         RedisClient.pool.returnResource(redis)
